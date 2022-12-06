@@ -59,7 +59,7 @@
 
     <include>
       <pose>0 0 0 0 0 -1.57079632675</pose>
-      <name>cafe</name>
+      <name>Warehouse</name>
       <uri>///usr/workspace/turtlebot_ws/src/Warehouse/</uri>
     </include>
 

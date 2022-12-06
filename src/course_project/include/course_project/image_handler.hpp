@@ -173,7 +173,7 @@ class Image_Handler {
         cv::circle(image_cv, cv::Point(red_p1.first, red_p1.second), 10, CV_RGB(0, 255, 0));
         cv::circle(image_cv, cv::Point(red_p2.first, red_p2.second), 10, CV_RGB(0, 255, 0));
         // ROS_INFO("%d %d %d %d", red_p1.first, red_p1.second, red_p2.first, red_p2.second);
-        ROS_INFO("%d %d %d %d", x1, y1, x2, y2);
+        // ROS_INFO("%d %d %d %d", x1, y1, x2, y2);
 
         cv::imshow("reddst", dst);
 
