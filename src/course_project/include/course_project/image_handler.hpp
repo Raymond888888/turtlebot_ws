@@ -10,9 +10,12 @@
 #include <sensor_msgs/image_encodings.h>
 
 #include <iostream>
+#include <mypid.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <tuple>
+
+static const std::string OPENCV_WINDOW = "Image window";
 
 enum robot_state {
     DETECT_ROAD,
@@ -25,8 +28,6 @@ enum rotate_direction {
     LEFT_ROTATION,
     RIGHT_ROTATION
 };
-
-static const std::string OPENCV_WINDOW = "Image window";
 
 int area_calc(cv::Mat img) {
     int a = 0;
@@ -68,7 +69,11 @@ std::tuple<bool, float, float, float, float> get_red_centers(cv::Mat img) {
     x2 /= a;
     y2 /= a;
 
-    ret = std::make_tuple(false, (int)y1, (int)x1, (int)y2, (int)x2);
+    if (0 < y1 && y1 < 320 && 320 < y2 && y2 < 640) {
+        // ROS_INFO("TRUE!!!!!!!");
+        ret = std::make_tuple(true, (int)y1, (int)x1, (int)y2, (int)x2);
+    } else
+        ret = std::make_tuple(false, (int)y1, (int)x1, (int)y2, (int)x2);
     return ret;
 }
 class Image_Handler {
@@ -82,10 +87,15 @@ class Image_Handler {
     bool status;
     int x1, y1, x2, y2;
     std::pair<int, int> red_p1, red_p2;
+    pid_config config;
+    pid cone_pid;
 
    public:
     cv::Mat image_cv;
     ros::Publisher vel_pub;
+
+    float redcone_delta;
+    int bluecone_delta;
 
     Image_Handler(ros::NodeHandle& nh_)
         : it_(nh_) {
@@ -95,6 +105,15 @@ class Image_Handler {
         image_sub_ = it_.subscribe("/d435/color/image_raw", 1,
                                    &Image_Handler::imageCb, this);
         image_pub_ = it_.advertise("/second_task_node/output_video", 1);
+
+        config.KP = 0.01;
+        config.KI = 0.000001;
+        config.KD = 0.000005;
+        config.error_max = 10;
+        config.outputMax = 1;
+        config.PID_Mode = PID_POSITION;
+
+        PID_Init(&cone_pid, &config);
 
         cv::namedWindow(OPENCV_WINDOW);
     }
@@ -167,6 +186,7 @@ class Image_Handler {
         // 更新锥桶中心点坐标和状态
         result = get_red_centers(dst);
         std::tie(status, x1, y1, x2, y2) = result;
+
         red_p1 = std::make_pair(x1, y1);
         red_p2 = std::make_pair(x2, y2);
 
@@ -174,8 +194,13 @@ class Image_Handler {
         cv::circle(image_cv, cv::Point(red_p2.first, red_p2.second), 10, CV_RGB(0, 255, 0));
         // ROS_INFO("%d %d %d %d", red_p1.first, red_p1.second, red_p2.first, red_p2.second);
         // ROS_INFO("%d %d %d %d", x1, y1, x2, y2);
+        redcone_delta = (x1 + x2) / 2.0 - 320;
+        // ROS_INFO("redcone_delta %f", redcone_delta);
+        // ROS_INFO(" status %d", (int)status);
 
         cv::imshow("reddst", dst);
+
+        robot_rontrol();
 
         // TODO BLUE
         mask = bluecone.clone();
@@ -197,6 +222,35 @@ class Image_Handler {
         cv::imshow(OPENCV_WINDOW, image_cv);
 
         cv::waitKey(10);
+    }
+
+    void robot_rontrol() {
+        // cmd speed publish
+        geometry_msgs::Twist cmd;
+        cmd.linear.x = 0;
+        cmd.linear.y = 0;
+        cmd.linear.z = 0;
+        cmd.angular.x = 0;
+        cmd.angular.y = 0;
+        cmd.angular.z = 0;
+
+        if (area_red > 100) {  // mode=red
+            cone_pid.fdb = redcone_delta;
+            cone_pid.ref = 0.0;
+            PID_Calc(&cone_pid);
+
+            // 调PID用 调完可注释
+            // ROS_INFO("fdb %f ref %f  err %f output %f", cone_pid.fdb, cone_pid.ref, cone_pid.error[0], cone_pid.output);
+
+            if (status) {
+                cmd.linear.x = 0.2;
+
+                cmd.angular.z = cone_pid.output;
+            } else
+                cmd.angular.z = 0;
+        }
+
+        vel_pub.publish(cmd);
     }
 };
 

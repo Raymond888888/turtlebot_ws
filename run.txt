@@ -1,7 +1,5 @@
 
-export TURTLEBOT3_MODEL=burger
-
-source /usr/workspace/turtlebot_ws/devel/setup.bash
+export TURTLEBOT3_MODEL=burger && source /usr/workspace/turtlebot_ws/devel/setup.bash
 
 
 1
