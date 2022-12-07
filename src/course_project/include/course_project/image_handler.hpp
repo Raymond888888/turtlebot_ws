@@ -105,6 +105,8 @@ class Image_Handler {
     image_transport::Subscriber image_sub_;
     image_transport::Publisher image_pub_;
 
+    geometry_msgs::Twist cmd;
+
     int area_red = 0, area_blue = 0;
     std::tuple<bool, float, float, float, float> result_red;
     std::tuple<bool, float, float> result_blue;
@@ -116,6 +118,8 @@ class Image_Handler {
 
     enum robot_mode robot_mode = RED_MODE;
     int modeflag = 0;
+
+    int flag_follow = 0;
 
    public:
     cv::Mat image_cv;
@@ -263,7 +267,6 @@ class Image_Handler {
 
     void robot_rontrol() {
         // cmd speed publish
-        geometry_msgs::Twist cmd;
         cmd.linear.x = 0;
         cmd.linear.y = 0;
         cmd.linear.z = 0;
@@ -285,6 +288,7 @@ class Image_Handler {
         }
         if (timer > 180) {
             robot_mode = STOP_ACTION;
+            flag_follow = 1;
         }
 
         if (robot_mode == RED_MODE) {  // mode=red
@@ -317,11 +321,11 @@ class Image_Handler {
                 cmd.angular.z = 0;
             } else if (timer < 70) {
                 cmd.linear.x = 0.3;
-                cmd.angular.z = 0.2;
+                cmd.angular.z = 0.3;
             } else if (timer < 90) {
                 cmd.linear.x = 0.3;
                 cmd.angular.z = 0;
-            } else if (timer < 160) {
+            } else if (timer < 170) {
                 cmd.linear.x = 0.3;
                 cmd.angular.z = -0.2;
             } else {
@@ -333,7 +337,23 @@ class Image_Handler {
             cmd.angular.z = 0;
         }
 
+        if (flag_follow) {
+            Follow_Pic();
+        }
         vel_pub.publish(cmd);
+    }
+
+    void Follow_Pic() {
+        static int followtimer = 0;
+        ROS_INFO("folling");
+        if (followtimer < 50) {
+            cmd.linear.x = 0;
+            cmd.angular.z = 0;
+        } else {
+            cmd.linear.x = 0.1;
+            cmd.angular.z = 0;
+        }
+        followtimer++;
     }
 };
 
