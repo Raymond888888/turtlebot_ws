@@ -18,7 +18,7 @@
 static const std::string OPENCV_WINDOW = "Image window";
 
 enum robot_mode {
-    RED_MODE,
+    RED_MODE=0,
     BLUE_MODE,
     STOP_ACTION
 };
@@ -104,7 +104,7 @@ class Image_Handler {
     image_transport::Subscriber image_sub_;
     image_transport::Publisher image_pub_;
 
-    int area_red, area_blue;
+    int area_red=0, area_blue=0;
     std::tuple<bool, float, float, float, float> result_red;
     std::tuple<bool, float, float> result_blue;
     bool status_red, status_blue;
@@ -113,7 +113,7 @@ class Image_Handler {
     pid_config config;
     pid cone_pid;
 
-    enum robot_mode robot_mode;
+    enum robot_mode robot_mode=RED_MODE;
     int modeflag = 0;
 
    public:
@@ -270,9 +270,9 @@ class Image_Handler {
         cmd.angular.y = 0;
         cmd.angular.z = 0;
 
-        if (area_red > 100 && modeflag == 0)
+        if ( modeflag == 0)
             robot_mode = RED_MODE;
-        else if (area_blue > 10) {
+        if (area_blue > 750) {
             robot_mode = BLUE_MODE;
             modeflag = 1;
         }
@@ -285,12 +285,12 @@ class Image_Handler {
             // 调PID用 调完可注释
             // ROS_INFO("fdb %f ref %f  err %f output %f", cone_pid.fdb, cone_pid.ref, cone_pid.error[0], cone_pid.output);
 
-            if (status_red) {
+            // if (status_red) {
                 cmd.linear.x = 0.2;
 
                 cmd.angular.z = cone_pid.output;
-            } else
-                cmd.angular.z = 0;
+            // } else
+                // cmd.angular.z = 0;
         } else if (robot_mode == BLUE_MODE) {  // mode=blue
             ROS_INFO("BLUE_MODE");
             cmd.linear.x = 0.2;
