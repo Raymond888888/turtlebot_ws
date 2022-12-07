@@ -17,9 +17,9 @@
 
 static const std::string OPENCV_WINDOW = "Image window";
 
-enum robot_state {
-    DETECT_ROAD,
-    DETECT_IMAGE,
+enum robot_mode {
+    RED_MODE,
+    BLUE_MODE,
     STOP_ACTION
 };
 
@@ -76,6 +76,28 @@ std::tuple<bool, float, float, float, float> get_red_centers(cv::Mat img) {
         ret = std::make_tuple(false, (int)y1, (int)x1, (int)y2, (int)x2);
     return ret;
 }
+
+std::tuple<bool, float, float> get_blue_centers(cv::Mat img) {
+    std::tuple<bool, float, float> ret;
+    float x = 0, y = 0;
+    float a = 0;
+    for (int i = 1; i < img.rows; i++) {
+        for (int j = 1; j < img.cols; j++) {
+            if (img.at<uchar>(i, j)) {
+                x += i;
+                y += j;
+                a++;
+            }
+        }
+    }
+    x /= a;
+    y /= a;
+    if (1) {
+        ret = std::make_tuple(true, (int)y, (int)x);
+    } else
+        ret = std::make_tuple(false, (int)y, (int)x);
+    return ret;
+}
 class Image_Handler {
    private:
     image_transport::ImageTransport it_;
@@ -83,19 +105,23 @@ class Image_Handler {
     image_transport::Publisher image_pub_;
 
     int area_red, area_blue;
-    std::tuple<bool, float, float, float, float> result;
-    bool status;
-    int x1, y1, x2, y2;
-    std::pair<int, int> red_p1, red_p2;
+    std::tuple<bool, float, float, float, float> result_red;
+    std::tuple<bool, float, float> result_blue;
+    bool status_red, status_blue;
+    float x1, y1, x2, y2, x, y;
+    std::pair<int, int> red_p1, red_p2, blue_p;
     pid_config config;
     pid cone_pid;
+
+    enum robot_mode robot_mode;
+    int modeflag = 0;
 
    public:
     cv::Mat image_cv;
     ros::Publisher vel_pub;
 
     float redcone_delta;
-    int bluecone_delta;
+    float bluecone_delta;
 
     Image_Handler(ros::NodeHandle& nh_)
         : it_(nh_) {
@@ -181,11 +207,11 @@ class Image_Handler {
 
         // 计算面积
         area_red = area_calc(dst);
-        // ROS_INFO("area: %d", area_red);
+        // ROS_INFO("area: %d", area_reget_blue_centersd);
 
         // 更新锥桶中心点坐标和状态
-        result = get_red_centers(dst);
-        std::tie(status, x1, y1, x2, y2) = result;
+        result_red = get_red_centers(dst);
+        std::tie(status_red, x1, y1, x2, y2) = result_red;
 
         red_p1 = std::make_pair(x1, y1);
         red_p2 = std::make_pair(x2, y2);
@@ -196,7 +222,7 @@ class Image_Handler {
         // ROS_INFO("%d %d %d %d", x1, y1, x2, y2);
         redcone_delta = (x1 + x2) / 2.0 - 320;
         // ROS_INFO("redcone_delta %f", redcone_delta);
-        // ROS_INFO(" status %d", (int)status);
+        // ROS_INFO(" status_red %d", (int)status_red);
 
         cv::imshow("reddst", dst);
 
@@ -217,6 +243,16 @@ class Image_Handler {
         cv::morphologyEx(dst, dst, cv::MORPH_OPEN, element);
 
         area_blue = area_calc(dst);
+        ROS_INFO("area_blue: %d", area_blue);
+
+        // 更新锥桶中心点坐标和状态
+        result_blue = get_blue_centers(dst);
+        std::tie(status_blue, x, y) = result_blue;
+        blue_p = std::make_pair(x, y);
+        cv::circle(image_cv, cv::Point(blue_p.first, blue_p.second), 10, CV_RGB(255, 0, 0));
+
+        bluecone_delta = x - 320;
+
         cv::imshow("bluedst", dst);
 
         cv::imshow(OPENCV_WINDOW, image_cv);
@@ -234,7 +270,14 @@ class Image_Handler {
         cmd.angular.y = 0;
         cmd.angular.z = 0;
 
-        if (area_red > 100) {  // mode=red
+        if (area_red > 100 && modeflag == 0)
+            robot_mode = RED_MODE;
+        else if (area_blue > 10) {
+            robot_mode = BLUE_MODE;
+            modeflag = 1;
+        }
+        if (robot_mode == RED_MODE) {  // mode=red
+            ROS_INFO("RED_MODE");
             cone_pid.fdb = redcone_delta;
             cone_pid.ref = 0.0;
             PID_Calc(&cone_pid);
@@ -242,12 +285,20 @@ class Image_Handler {
             // 调PID用 调完可注释
             // ROS_INFO("fdb %f ref %f  err %f output %f", cone_pid.fdb, cone_pid.ref, cone_pid.error[0], cone_pid.output);
 
-            if (status) {
+            if (status_red) {
                 cmd.linear.x = 0.2;
 
                 cmd.angular.z = cone_pid.output;
             } else
                 cmd.angular.z = 0;
+        } else if (robot_mode == BLUE_MODE) {  // mode=blue
+            ROS_INFO("BLUE_MODE");
+            cmd.linear.x = 0.2;
+
+            cone_pid.fdb = bluecone_delta;
+            cone_pid.ref = 0.0;
+            PID_Calc(&cone_pid);
+            cmd.angular.z = cone_pid.output;
         }
 
         vel_pub.publish(cmd);
